@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>しんかいたんけん — Deep Sea Explorer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Helvetica Neue',Arial,sans-serif;touch-action:none;user-select:none}
+
+canvas{display:block;width:100%;height:100%}
+
+/* Title screen */
+#title-screen{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,#0a2463 0%,#1e6091 30%,#168aad 60%,#34a0a4 80%,#76c893 100%);transition:opacity 1.2s}
+#title-screen.fade{opacity:0;pointer-events:none}
+.title-sub{position:absolute;top:0;left:0;right:0;height:100%;overflow:hidden;pointer-events:none}
+.title-bubble{position:absolute;border-radius:50%;background:rgba(255,255,255,0.15);animation:rise linear infinite}
+@keyframes rise{0%{transform:translateY(0) scale(1)}100%{transform:translateY(-110vh) scale(0.3)}}
+.title-h1{font-size:clamp(28px,7vw,56px);font-weight:900;color:#fff;text-shadow:0 4px 24px rgba(0,80,120,0.5);z-index:2;letter-spacing:2px}
+.title-h2{font-size:clamp(14px,3vw,22px);color:rgba(255,255,255,0.85);margin-top:8px;z-index:2;font-weight:400}
+.title-age{font-size:clamp(11px,2.5vw,16px);color:rgba(255,255,255,0.6);margin-top:6px;z-index:2}
+.title-sub-icon{font-size:clamp(60px,15vw,120px);z-index:2;margin-bottom:16px;filter:drop-shadow(0 8px 32px rgba(0,0,0,0.3))}
+.start-btn{margin-top:32px;z-index:2;background:rgba(255,255,255,0.2);border:2px solid rgba(255,255,255,0.5);color:#fff;font-size:clamp(16px,4vw,24px);font-weight:700;padding:14px 48px;border-radius:40px;cursor:pointer;transition:all .3s;backdrop-filter:blur(8px);letter-spacing:1px}
+.start-btn:hover,.start-btn:active{background:rgba(255,255,255,0.35);transform:scale(1.05)}
+
+/* HUD */
+#hud{position:fixed;z-index:50;pointer-events:none;inset:0}
+.depth-bar{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:8px;height:60vh;background:rgba(255,255,255,0.1);border-radius:4px}
+.depth-fill{position:absolute;top:0;left:0;width:100%;background:linear-gradient(180deg,#76c893,#168aad,#1e3a5f,#0a1628,#050810);border-radius:4px;transition:height .3s}
+.depth-marker{position:absolute;right:28px;transform:translateY(-50%);font-size:11px;color:rgba(255,255,255,0.5);white-space:nowrap;font-weight:600}
+.depth-num{position:absolute;right:12px;bottom:16px;font-size:clamp(14px,3vw,20px);font-weight:800;color:#fff;text-align:right;text-shadow:0 2px 8px rgba(0,0,0,0.6)}
+.depth-num span{font-size:clamp(10px,2vw,13px);font-weight:400;opacity:0.6}
+.zone-label{position:absolute;left:16px;top:16px;font-size:clamp(12px,2.8vw,18px);font-weight:700;color:rgba(255,255,255,0.7);text-shadow:0 2px 8px rgba(0,0,0,0.5);transition:opacity .5s}
+.zone-name-en{font-size:clamp(9px,2vw,12px);font-weight:400;opacity:0.5;display:block;margin-top:2px}
+.flashlight-hint{position:absolute;left:16px;bottom:16px;font-size:clamp(10px,2.2vw,14px);color:rgba(255,255,255,0.4);transition:opacity 1s}
+
+/* Creature card */
+#creature-card{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120%);z-index:60;background:rgba(10,20,40,0.92);border:1px solid rgba(100,200,255,0.3);border-radius:16px;padding:16px 20px;max-width:340px;width:calc(100% - 40px);backdrop-filter:blur(12px);transition:transform .4s cubic-bezier(.34,1.56,.64,1),opacity .4s;pointer-events:auto;box-shadow:0 8px 32px rgba(0,0,0,0.6)}
+#creature-card.show{transform:translateX(-50%) translateY(0)}
+.cc-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.cc-icon{font-size:32px}
+.cc-name{font-size:clamp(14px,3.5vw,20px);font-weight:800;color:#fff}
+.cc-name-en{font-size:clamp(9px,2vw,12px);color:rgba(100,200,255,0.6);font-weight:400}
+.cc-depth{font-size:11px;color:rgba(100,200,255,0.5);margin-bottom:6px}
+.cc-fact{font-size:clamp(12px,2.8vw,14px);color:rgba(200,220,255,0.85);line-height:1.6}
+.cc-close{position:absolute;top:8px;right:12px;background:none;border:none;color:rgba(255,255,255,0.4);font-size:18px;cursor:pointer;pointer-events:auto}
+
+/* Discovery count */
+.discovery{position:absolute;left:16px;top:50px;font-size:clamp(11px,2.5vw,14px);color:rgba(255,255,255,0.5)}
+.discovery b{color:rgba(100,200,255,0.8)}
+
+/* Bottom reached */
+#bottom-msg{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);opacity:0;pointer-events:none;transition:opacity 1s}
+#bottom-msg.show{opacity:1;pointer-events:auto}
+.bottom-title{font-size:clamp(20px,5vw,36px);font-weight:900;color:#fff;text-shadow:0 0 40px rgba(100,200,255,0.4)}
+.bottom-sub{font-size:clamp(12px,3vw,18px);color:rgba(100,200,255,0.7);margin-top:8px}
+.bottom-stats{margin-top:24px;font-size:clamp(12px,2.8vw,15px);color:rgba(200,220,255,0.6);text-align:center;line-height:1.8}
+.retry-btn{margin-top:28px;background:rgba(100,200,255,0.15);border:1px solid rgba(100,200,255,0.4);color:#fff;font-size:16px;font-weight:600;padding:12px 36px;border-radius:30px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="title-screen">
+    <div class="title-sub" id="bubbles"></div>
+    <div class="title-sub-icon">🐟</div>
+    <div class="title-h1">しんかいたんけん</div>
+    <div class="title-h2">Deep Sea Explorer</div>
+    <div class="title-age">5〜9さい</div>
+    <button class="start-btn" id="start-btn">もぐる！</button>
+</div>
+
+<canvas id="c"></canvas>
+
+<div id="hud" style="display:none">
+    <div class="zone-label" id="zone-label"></div>
+    <div class="discovery" id="discovery"></div>
+    <div class="depth-bar">
+        <div class="depth-fill" id="depth-fill"></div>
+    </div>
+    <div class="depth-num" id="depth-num">0<span>m</span></div>
+    <div class="flashlight-hint" id="fl-hint">タップで ライトを てらそう</div>
+</div>
+
+<div id="creature-card">
+    <button class="cc-close" id="cc-close">✕</button>
+    <div class="cc-header"><span class="cc-icon" id="cc-icon"></span><div><div class="cc-name" id="cc-name"></div><div class="cc-name-en" id="cc-name-en"></div></div></div>
+    <div class="cc-depth" id="cc-depth"></div>
+    <div class="cc-fact" id="cc-fact"></div>
+</div>
+
+<div id="bottom-msg">
+    <div class="bottom-title">マリアナかいこうに とうたつ！</div>
+    <div class="bottom-sub">ちきゅうで いちばん ふかいばしょ</div>
+    <div class="bottom-stats" id="bottom-stats"></div>
+    <button class="retry-btn" id="retry-btn">もういちど もぐる</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//   CONFIG
+// ═══════════════════════════════════════
+const MAX_DEPTH = 11000;
+const ZONE_DEFS = [
+    { name:'ひかりの ゾーン', en:'Sunlight Zone', from:0, to:200, bg1:[10,36,99], bg2:[22,138,173], light:1.0 },
+    { name:'たそがれ ゾーン', en:'Twilight Zone', from:200, to:1000, bg1:[22,96,145], bg2:[15,40,80], light:0.45 },
+    { name:'まよなか ゾーン', en:'Midnight Zone', from:1000, to:4000, bg1:[10,30,60], bg2:[5,12,30], light:0.08 },
+    { name:'しんかい ゾーン', en:'Abyssal Zone', from:4000, to:6000, bg1:[5,12,30], bg2:[3,6,16], light:0.02 },
+    { name:'ちょうしんかい ゾーン', en:'Hadal Zone', from:6000, to:11000, bg1:[3,6,16], bg2:[1,2,6], light:0.005 }
+];
+
+const CREATURES = [
+    // Sunlight 0-200
+    { name:'クマノミ', en:'Clownfish', icon:'🐠', depth:15, zone:0,
+      fact:'イソギンチャクの どくに へいき。ぬるぬるの まくで まもられているよ。' },
+    { name:'ウミガメ', en:'Sea Turtle', icon:'🐢', depth:30, zone:0,
+      fact:'うみを 5000キロも およぐよ。うまれた はまべに もどって たまごを うむんだ。' },
+    { name:'イルカ', en:'Dolphin', icon:'🐬', depth:50, zone:0,
+      fact:'おとで なかまと おはなし するよ。ひとりひとり じぶんの なまえの おとが あるんだ。' },
+    { name:'マンボウ', en:'Ocean Sunfish', icon:'🐡', depth:100, zone:0,
+      fact:'3おくこの たまごを うむ さかな。せかいで いちばん おおきい ほねの さかなだよ。' },
+    { name:'ミズクラゲ', en:'Moon Jellyfish', icon:'🪼', depth:60, zone:0,
+      fact:'のうも しんぞうも ないのに 5おくねん いきのびている すごい いきもの。' },
+    { name:'ジンベエザメ', en:'Whale Shark', icon:'🦈', depth:140, zone:0,
+      fact:'ぜんちょう12メートル！でも プランクトンを たべる やさしい サメだよ。' },
+
+    // Twilight 200-1000
+    { name:'ホタルイカ', en:'Firefly Squid', icon:'🦑', depth:300, zone:1,
+      fact:'からだじゅうの ひかるてんが あおく かがやく。とやまわんで ゆうめいだよ。' },
+    { name:'マッコウクジラ', en:'Sperm Whale', icon:'🐋', depth:500, zone:1,
+      fact:'2000メートルまで もぐれる ほにゅうるい。ダイオウイカと たたかうよ。' },
+    { name:'ハチェットフィッシュ', en:'Hatchetfish', icon:'🐟', depth:600, zone:1,
+      fact:'おなかが ひかって したからの かげを けす。てきから みえなく なるんだ。' },
+    { name:'リュウグウノツカイ', en:'Oarfish', icon:'🐉', depth:800, zone:1,
+      fact:'ぜんちょう11メートル！「りゅうぐうの つかい」という なまえの ながーい さかな。' },
+
+    // Midnight 1000-4000
+    { name:'チョウチンアンコウ', en:'Anglerfish', icon:'🐡', depth:1500, zone:2,
+      fact:'あたまの ライトで えものを おびきよせる。まっくらな うみの ハンターだよ。' },
+    { name:'ダイオウイカ', en:'Giant Squid', icon:'🦑', depth:2000, zone:2,
+      fact:'めだまの おおきさは バスケットボールくらい！ぜんちょう13メートルの きょだいイカ。' },
+    { name:'コウモリダコ', en:'Vampire Squid', icon:'🦇', depth:2500, zone:2,
+      fact:'「きゅうけつイカ」という なまえだけど やさしい。うでの あいだに まくが あるよ。' },
+    { name:'デメニギス', en:'Barreleye Fish', icon:'👀', depth:3000, zone:2,
+      fact:'あたまが とうめい！みどりいろの めが うえを むいて くらやみの えものを さがすよ。' },
+
+    // Abyssal 4000-6000
+    { name:'ダンボオクトパス', en:'Dumbo Octopus', icon:'🐙', depth:4200, zone:3,
+      fact:'みみのような ひれを パタパタ させて およぐ。ダンボみたいで かわいいよ。' },
+    { name:'オオグソクムシ', en:'Giant Isopod', icon:'🦞', depth:4800, zone:3,
+      fact:'ぜんちょう50センチの だんごむしの なかま。9ねんかん ごはんを たべなくても へいきだよ。' },
+    { name:'ナマコ', en:'Sea Cucumber', icon:'🥒', depth:5500, zone:3,
+      fact:'しんかいの そうじやさん。かいていの つちを たべて きれいに してくれるよ。' },
+
+    // Hadal 6000-11000
+    { name:'カイコウオオソコエビ', en:'Hadal Amphipod', icon:'🦐', depth:7000, zone:4,
+      fact:'せかいで いちばん ふかい ところに すむ エビのなかま。からだは 5センチくらい。' },
+    { name:'マリアナスネイルフィッシュ', en:'Mariana Snailfish', icon:'🐟', depth:8200, zone:4,
+      fact:'せかいで いちばん ふかい ところに すむ さかな。すいあつは 1000きあつ！' },
+    { name:'クセノフィオフォラ', en:'Xenophyophore', icon:'🫧', depth:10500, zone:4,
+      fact:'たった ひとつの さいぼうで できた いきもの。おおきさは 20センチにも なるよ。' }
+];
+
+// ═══════════════════════════════════════
+//   STATE
+// ═══════════════════════════════════════
+let W, H, dpr;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let depth = 0;            // current depth in meters
+let targetDepth = 0;
+let scrollSpeed = 0;
+let subX = 0.5, subY = 0.5;  // sub position (normalized 0-1)
+let targetSubX = 0.5, targetSubY = 0.5;
+let flashlightOn = false;
+let flashX = 0, flashY = 0;  // flashlight target (pixels)
+let playing = false;
+let reachedBottom = false;
+let discoveredSet = new Set();
+let particles = [];
+let creatures = [];        // active creature instances on screen
+let bubbles = [];
+let jellyPulse = 0;
+let frameCount = 0;
+
+// ═══════════════════════════════════════
+//   INIT
+// ═══════════════════════════════════════
+function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Title bubbles
+(function initTitleBubbles() {
+    const container = document.getElementById('bubbles');
+    for (let i = 0; i < 20; i++) {
+        const b = document.createElement('div');
+        b.className = 'title-bubble';
+        const size = 8 + Math.random() * 30;
+        b.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;bottom:${-size}px;animation-duration:${4+Math.random()*6}s;animation-delay:${Math.random()*5}s;`;
+        container.appendChild(b);
+    }
+})();
+
+// ═══════════════════════════════════════
+//   START
+// ═══════════════════════════════════════
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('retry-btn').addEventListener('click', () => {
+    document.getElementById('bottom-msg').classList.remove('show');
+    depth = 0; targetDepth = 0; reachedBottom = false;
+    discoveredSet.clear();
+    creatures = [];
+    updateDiscovery();
+});
+document.getElementById('cc-close').addEventListener('click', () => {
+    document.getElementById('creature-card').classList.remove('show');
+});
+
+function startGame() {
+    document.getElementById('title-screen').classList.add('fade');
+    document.getElementById('hud').style.display = '';
+    playing = true;
+    updateDiscovery();
+    requestAnimationFrame(loop);
+}
+
+// ═══════════════════════════════════════
+//   INPUT
+// ═══════════════════════════════════════
+let pointerDown = false;
+let pointerX = 0, pointerY = 0;
+
+function onPointerDown(e) {
+    if (!playing) return;
+    const p = e.touches ? e.touches[0] : e;
+    pointerDown = true;
+    pointerX = p.clientX; pointerY = p.clientY;
+    flashlightOn = true;
+    flashX = pointerX; flashY = pointerY;
+
+    // Check creature tap
+    const now = depth;
+    for (const c of creatures) {
+        const dx = p.clientX - c.sx;
+        const dy = p.clientY - c.sy;
+        if (dx*dx + dy*dy < 2500) {
+            showCreatureCard(c.def);
+            break;
+        }
+    }
+}
+function onPointerMove(e) {
+    if (!playing) return;
+    const p = e.touches ? e.touches[0] : e;
+    pointerX = p.clientX; pointerY = p.clientY;
+    if (pointerDown) {
+        flashX = pointerX; flashY = pointerY;
+    }
+}
+function onPointerUp() {
+    pointerDown = false;
+    flashlightOn = false;
+}
+
+canvas.addEventListener('mousedown', onPointerDown);
+canvas.addEventListener('mousemove', onPointerMove);
+canvas.addEventListener('mouseup', onPointerUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, {passive:false});
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onPointerMove(e); }, {passive:false});
+canvas.addEventListener('touchend', onPointerUp);
+
+// Scroll / swipe to descend
+let lastTouchY = 0;
+canvas.addEventListener('wheel', e => {
+    if (!playing) return;
+    scrollSpeed += e.deltaY * 0.15;
+}, {passive:true});
+canvas.addEventListener('touchstart', e => {
+    lastTouchY = e.touches[0].clientY;
+}, {passive:true});
+canvas.addEventListener('touchmove', e => {
+    const dy = lastTouchY - e.touches[0].clientY;
+    lastTouchY = e.touches[0].clientY;
+    scrollSpeed += dy * 0.8;
+}, {passive:true});
+
+// ═══════════════════════════════════════
+//   CREATURE CARD
+// ═══════════════════════════════════════
+function showCreatureCard(def) {
+    discoveredSet.add(def.name);
+    updateDiscovery();
+    const card = document.getElementById('creature-card');
+    document.getElementById('cc-icon').textContent = def.icon;
+    document.getElementById('cc-name').textContent = def.name;
+    document.getElementById('cc-name-en').textContent = def.en;
+    document.getElementById('cc-depth').textContent = `すいしん ${def.depth}m`;
+    document.getElementById('cc-fact').textContent = def.fact;
+    card.classList.add('show');
+    setTimeout(() => card.classList.remove('show'), 5000);
+}
+
+function updateDiscovery() {
+    const el = document.getElementById('discovery');
+    el.innerHTML = `はっけん <b>${discoveredSet.size}</b> / ${CREATURES.length}`;
+}
+
+// ═══════════════════════════════════════
+//   ZONE HELPERS
+// ═══════════════════════════════════════
+function getZone(d) {
+    for (let i = ZONE_DEFS.length - 1; i >= 0; i--) {
+        if (d >= ZONE_DEFS[i].from) return i;
+    }
+    return 0;
+}
+
+function getZoneProgress(d) {
+    const z = ZONE_DEFS[getZone(d)];
+    return Math.min(1, (d - z.from) / (z.to - z.from));
+}
+
+function lerpColor(a, b, t) {
+    return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+}
+
+function getAmbientLight(d) {
+    const zi = getZone(d);
+    const z = ZONE_DEFS[zi];
+    const t = getZoneProgress(d);
+    const nextZ = ZONE_DEFS[Math.min(zi+1, ZONE_DEFS.length-1)];
+    return z.light + (nextZ.light - z.light) * t;
+}
+
+// ═══════════════════════════════════════
+//   PARTICLE SYSTEM
+// ═══════════════════════════════════════
+function spawnParticles() {
+    while (particles.length < 80) {
+        particles.push({
+            x: Math.random() * W,
+            y: Math.random() * H,
+            size: 0.5 + Math.random() * 2.5,
+            speed: 0.2 + Math.random() * 0.8,
+            drift: (Math.random() - 0.5) * 0.3,
+            alpha: 0.1 + Math.random() * 0.4
+        });
+    }
+}
+
+function updateParticles() {
+    const scrollDelta = scrollSpeed * 0.02;
+    for (const p of particles) {
+        p.y -= p.speed + scrollDelta;
+        p.x += p.drift + Math.sin(frameCount * 0.01 + p.y * 0.01) * 0.2;
+        if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+        if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; }
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+    }
+}
+
+function drawParticles() {
+    const amb = getAmbientLight(depth);
+    for (const p of particles) {
+        let a = p.alpha * Math.min(1, amb * 3 + 0.05);
+        // flashlight boost
+        if (flashlightOn) {
+            const dx = p.x - flashX, dy = p.y - flashY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const r = Math.min(W, H) * 0.25;
+            if (dist < r) a = Math.min(1, a + (1 - dist/r) * 0.6);
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(200,220,255,${a})`;
+        ctx.fill();
+    }
+}
+
+// ═══════════════════════════════════════
+//   CREATURE SPAWNING
+// ═══════════════════════════════════════
+function spawnCreatures() {
+    for (const def of CREATURES) {
+        const existing = creatures.find(c => c.def === def);
+        if (existing) continue;
+        const depthDiff = Math.abs(depth - def.depth);
+        if (depthDiff < 300) {
+            const side = Math.random() > 0.5 ? 1 : -1;
+            creatures.push({
+                def,
+                x: side > 0 ? -60 : W + 60,
+                y: H * (0.2 + Math.random() * 0.6),
+                sx: 0, sy: 0,
+                vx: side > 0 ? 0.4 + Math.random() * 0.6 : -(0.4 + Math.random() * 0.6),
+                vy: (Math.random() - 0.5) * 0.3,
+                size: 28 + Math.random() * 16,
+                wobble: Math.random() * Math.PI * 2,
+                wobbleSpeed: 0.02 + Math.random() * 0.02,
+                glowPhase: Math.random() * Math.PI * 2,
+                alive: true
+            });
+        }
+    }
+}
+
+function updateCreatures() {
+    for (const c of creatures) {
+        c.x += c.vx;
+        c.y += c.vy + Math.sin(c.wobble) * 0.4;
+        c.wobble += c.wobbleSpeed;
+        c.glowPhase += 0.03;
+        c.sx = c.x;
+        c.sy = c.y;
+        // Remove if far off screen
+        if (c.x < -120 || c.x > W + 120) c.alive = false;
+        // Depth too far
+        if (Math.abs(depth - c.def.depth) > 500) c.alive = false;
+    }
+    creatures = creatures.filter(c => c.alive);
+}
+
+function drawCreatures() {
+    const amb = getAmbientLight(depth);
+    for (const c of creatures) {
+        const zone = c.def.zone;
+        let vis = Math.min(1, amb * 2.5 + 0.08);
+
+        // Flashlight visibility
+        if (flashlightOn) {
+            const dx = c.x - flashX, dy = c.y - flashY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const r = Math.min(W, H) * 0.3;
+            if (dist < r) vis = Math.min(1, vis + (1 - dist/r) * 0.9);
+        }
+
+        // Bioluminescence glow for deep creatures
+        if (zone >= 2) {
+            const glowStr = 0.3 + Math.sin(c.glowPhase) * 0.2;
+            const glowR = c.size * 2.5;
+            const grd = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, glowR);
+            const hue = zone >= 4 ? '100,200,255' : zone >= 3 ? '80,255,200' : '100,180,255';
+            grd.addColorStop(0, `rgba(${hue},${glowStr * 0.5})`);
+            grd.addColorStop(1, `rgba(${hue},0)`);
+            ctx.fillStyle = grd;
+            ctx.fillRect(c.x - glowR, c.y - glowR, glowR*2, glowR*2);
+            vis = Math.max(vis, 0.5 + glowStr);
+        }
+
+        // Firefly squid special glow
+        if (c.def.en === 'Firefly Squid') {
+            const gs = 0.4 + Math.sin(c.glowPhase * 2) * 0.3;
+            const gr = c.size * 2;
+            const grd = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, gr);
+            grd.addColorStop(0, `rgba(80,120,255,${gs * 0.4})`);
+            grd.addColorStop(1, 'rgba(80,120,255,0)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(c.x - gr, c.y - gr, gr*2, gr*2);
+            vis = Math.max(vis, 0.7);
+        }
+
+        ctx.save();
+        ctx.globalAlpha = vis;
+        ctx.font = `${c.size}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Shadow/glow behind emoji
+        if (zone >= 2) {
+            ctx.shadowColor = zone >= 4 ? 'rgba(100,200,255,0.6)' : 'rgba(80,180,255,0.5)';
+            ctx.shadowBlur = 20;
+        }
+        ctx.fillText(c.def.icon, c.x, c.y);
+        ctx.restore();
+
+        // Name label if discovered or flashlighted
+        if (discoveredSet.has(c.def.name) || (flashlightOn && vis > 0.5)) {
+            ctx.save();
+            ctx.globalAlpha = vis * 0.7;
+            ctx.font = `bold ${Math.max(10, c.size * 0.35)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#fff';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+            ctx.fillText(c.def.name, c.x, c.y + c.size * 0.6);
+            ctx.restore();
+        }
+    }
+}
+
+// ═══════════════════════════════════════
+//   SUBMARINE
+// ═══════════════════════════════════════
+function drawSub() {
+    const sx = W * subX, sy = H * subY;
+    const sz = Math.min(W, H) * 0.05;
+
+    // Flashlight beam
+    if (flashlightOn) {
+        const dx = flashX - sx, dy = flashY - sy;
+        const angle = Math.atan2(dy, dx);
+        const beamLen = Math.min(W, H) * 0.5;
+        const spread = 0.3;
+
+        ctx.save();
+        const grd = ctx.createRadialGradient(sx, sy, sz, flashX, flashY, beamLen * 0.6);
+        grd.addColorStop(0, 'rgba(255,255,200,0.15)');
+        grd.addColorStop(1, 'rgba(255,255,200,0)');
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.arc(sx, sy, beamLen, angle - spread, angle + spread);
+        ctx.closePath();
+        ctx.fillStyle = grd;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Bubbles from sub
+    if (frameCount % 8 === 0) {
+        bubbles.push({
+            x: sx + (Math.random() - 0.5) * sz,
+            y: sy - sz * 0.5,
+            r: 1.5 + Math.random() * 3,
+            vy: -0.5 - Math.random() * 1.5,
+            vx: (Math.random() - 0.5) * 0.5,
+            life: 60 + Math.random() * 40
+        });
+    }
+
+    // Draw bubbles
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+        const b = bubbles[i];
+        b.x += b.vx + Math.sin(frameCount * 0.05 + i) * 0.3;
+        b.y += b.vy;
+        b.life--;
+        if (b.life <= 0) { bubbles.splice(i, 1); continue; }
+        const a = Math.min(1, b.life / 30) * 0.4;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(200,230,255,${a})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+    }
+
+    // Sub body
+    ctx.save();
+    ctx.translate(sx, sy);
+
+    // Hull
+    const gradient = ctx.createLinearGradient(-sz, -sz*0.6, -sz, sz*0.6);
+    gradient.addColorStop(0, '#f0c040');
+    gradient.addColorStop(0.5, '#e8a820');
+    gradient.addColorStop(1, '#c08010');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, sz * 1.2, sz * 0.65, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Window
+    ctx.beginPath();
+    ctx.arc(sz * 0.3, -sz * 0.05, sz * 0.28, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(150,220,255,0.7)';
+    ctx.fill();
+    ctx.strokeStyle = '#c09020';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Window glint
+    ctx.beginPath();
+    ctx.arc(sz * 0.35, -sz * 0.15, sz * 0.08, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fill();
+
+    // Periscope
+    ctx.fillStyle = '#c09020';
+    ctx.fillRect(-sz*0.1, -sz*0.65, sz*0.2, sz*0.25);
+    ctx.fillRect(-sz*0.15, -sz*0.72, sz*0.3, sz*0.1);
+
+    // Propeller
+    const propAngle = frameCount * 0.15;
+    ctx.save();
+    ctx.translate(-sz * 1.2, 0);
+    ctx.rotate(propAngle);
+    ctx.fillStyle = '#a07010';
+    for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.rotate(i * Math.PI * 2 / 3);
+        ctx.beginPath();
+        ctx.ellipse(0, sz * 0.2, sz * 0.08, sz * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    ctx.restore();
+
+    ctx.restore();
+}
+
+// ═══════════════════════════════════════
+//   BACKGROUND LAYERS
+// ═══════════════════════════════════════
+function drawBackground() {
+    const zi = getZone(depth);
+    const z = ZONE_DEFS[zi];
+    const t = getZoneProgress(depth);
+    const col = lerpColor(z.bg1, z.bg2, t);
+
+    // Base gradient
+    const grd = ctx.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, `rgb(${col[0]},${col[1]},${col[2]})`);
+    grd.addColorStop(1, `rgb(${Math.max(0,col[0]-5)},${Math.max(0,col[1]-5)},${Math.max(0,col[2]-5)})`);
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+
+    // Light rays in sunlight zone
+    if (depth < 400) {
+        const rayAlpha = Math.max(0, 0.12 * (1 - depth / 400));
+        ctx.save();
+        for (let i = 0; i < 5; i++) {
+            const rx = W * (0.1 + i * 0.2) + Math.sin(frameCount * 0.005 + i * 1.2) * 40;
+            const rw = 30 + Math.sin(frameCount * 0.008 + i) * 15;
+            const grd2 = ctx.createLinearGradient(rx, 0, rx, H);
+            grd2.addColorStop(0, `rgba(255,255,220,${rayAlpha})`);
+            grd2.addColorStop(1, 'rgba(255,255,220,0)');
+            ctx.fillStyle = grd2;
+            ctx.beginPath();
+            ctx.moveTo(rx - rw, 0);
+            ctx.lineTo(rx - rw * 2, H);
+            ctx.lineTo(rx + rw * 2, H);
+            ctx.lineTo(rx + rw, 0);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // Bioluminescent specks for deep zones
+    if (depth > 800) {
+        const intensity = Math.min(1, (depth - 800) / 2000);
+        const count = Math.floor(intensity * 30);
+        for (let i = 0; i < count; i++) {
+            const sx = ((frameCount * 0.3 + i * 137.5) % (W + 40)) - 20;
+            const sy = ((frameCount * 0.15 + i * 89.3) % (H + 40)) - 20;
+            const pulse = 0.3 + Math.sin(frameCount * 0.04 + i * 2.1) * 0.3;
+            const r = 1 + pulse * 2;
+            const colors = ['100,200,255', '80,255,180', '180,100,255', '255,180,80'];
+            const col2 = colors[i % colors.length];
+            ctx.beginPath();
+            ctx.arc(sx, sy, r, 0, Math.PI*2);
+            ctx.fillStyle = `rgba(${col2},${pulse * intensity * 0.6})`;
+            ctx.fill();
+            // glow
+            const grd3 = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 5);
+            grd3.addColorStop(0, `rgba(${col2},${pulse * intensity * 0.15})`);
+            grd3.addColorStop(1, `rgba(${col2},0)`);
+            ctx.fillStyle = grd3;
+            ctx.fillRect(sx - r*5, sy - r*5, r*10, r*10);
+        }
+    }
+}
+
+// ═══════════════════════════════════════
+//   SEAFLOOR (near bottom)
+// ═══════════════════════════════════════
+function drawSeafloor() {
+    if (depth < 10200) return;
+    const progress = Math.min(1, (depth - 10200) / 800);
+    const floorY = H - progress * H * 0.3;
+
+    ctx.save();
+    const grd = ctx.createLinearGradient(0, floorY, 0, H);
+    grd.addColorStop(0, 'rgba(30,25,20,0.8)');
+    grd.addColorStop(1, 'rgba(15,12,8,1)');
+    ctx.fillStyle = grd;
+
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 20) {
+        const hill = Math.sin(x * 0.01 + 1.5) * 20 + Math.sin(x * 0.03) * 8;
+        ctx.lineTo(x, floorY + hill);
+    }
+    ctx.lineTo(W, H);
+    ctx.fill();
+
+    // Hydrothermal vents
+    if (depth > 10600) {
+        const ventX1 = W * 0.3, ventX2 = W * 0.7;
+        for (const vx of [ventX1, ventX2]) {
+            const vy = floorY + Math.sin(vx * 0.01 + 1.5) * 20;
+            // Vent smoke
+            for (let i = 0; i < 8; i++) {
+                const smokeY = vy - i * 15 - Math.sin(frameCount * 0.03 + i) * 5;
+                const smokeR = 6 + i * 3;
+                const smokeA = 0.15 * (1 - i / 8);
+                ctx.beginPath();
+                ctx.arc(vx + Math.sin(frameCount * 0.02 + i * 0.5) * 8, smokeY, smokeR, 0, Math.PI*2);
+                ctx.fillStyle = `rgba(180,160,140,${smokeA})`;
+                ctx.fill();
+            }
+            // Vent base
+            ctx.fillStyle = '#2a2018';
+            ctx.beginPath();
+            ctx.moveTo(vx - 12, vy);
+            ctx.lineTo(vx - 8, vy - 25);
+            ctx.lineTo(vx + 8, vy - 25);
+            ctx.lineTo(vx + 12, vy);
+            ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
+// ═══════════════════════════════════════
+//   HUD UPDATE
+// ═══════════════════════════════════════
+function updateHUD() {
+    document.getElementById('depth-num').innerHTML = `${Math.floor(depth)}<span>m</span>`;
+    const pct = Math.min(100, (depth / MAX_DEPTH) * 100);
+    document.getElementById('depth-fill').style.height = pct + '%';
+
+    const zi = getZone(depth);
+    const z = ZONE_DEFS[zi];
+    document.getElementById('zone-label').innerHTML =
+        `${z.name}<span class="zone-name-en">${z.en} (${z.from}–${z.to}m)</span>`;
+
+    // Hide flashlight hint after first use
+    if (flashlightOn) {
+        document.getElementById('fl-hint').style.opacity = '0';
+    }
+}
+
+// ═══════════════════════════════════════
+//   MAIN LOOP
+// ═══════════════════════════════════════
+function loop() {
+    if (!playing) return;
+    frameCount++;
+
+    // Auto-descend slowly + scroll input
+    const autoSpeed = 0.3 + depth * 0.00005;
+    scrollSpeed *= 0.92;
+    depth += autoSpeed + scrollSpeed * 0.05;
+    depth = Math.max(0, Math.min(MAX_DEPTH, depth));
+
+    // Sub follows pointer gently
+    if (pointerDown) {
+        targetSubX = pointerX / W;
+        targetSubY = pointerY / H;
+    } else {
+        targetSubX += Math.sin(frameCount * 0.008) * 0.001;
+        targetSubY = 0.45 + Math.sin(frameCount * 0.005) * 0.05;
+    }
+    subX += (targetSubX - subX) * 0.03;
+    subY += (targetSubY - subY) * 0.03;
+
+    // Spawn
+    spawnParticles();
+    spawnCreatures();
+
+    // Update
+    updateParticles();
+    updateCreatures();
+
+    // Draw
+    drawBackground();
+    drawSeafloor();
+    drawParticles();
+    drawCreatures();
+    drawSub();
+    updateHUD();
+
+    // Bottom check
+    if (depth >= MAX_DEPTH - 10 && !reachedBottom) {
+        reachedBottom = true;
+        setTimeout(() => {
+            document.getElementById('bottom-stats').innerHTML =
+                `はっけんした いきもの: <b>${discoveredSet.size}</b> / ${CREATURES.length}<br>` +
+                `さいしんすいしん: <b>10,994m</b>`;
+            document.getElementById('bottom-msg').classList.add('show');
+        }, 2000);
+    }
+
+    requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
